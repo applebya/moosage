@@ -1,51 +1,65 @@
 # Moosage 🐮
 
-A native macOS menu bar app that tracks your **Claude Code** _and_ **Codex CLI** usage in one place. Two batteries, one cohesive UI, no terminal needed.
+> Your Claude Code and Codex CLI usage, mooed at you from the macOS menu bar.
 
-- 🔋🔋 Two side-by-side battery icons in the menu bar — `[C 94%] [O 18%]` — colored independently (default → yellow ≥75% → red ≥90%)
-- 🖱 Click for a unified popover: per-provider plan, current 5h window, weekly bar (Codex), reset time, last activity
-- 🚀 Launch at login (`SMAppService`), no dock icon
-- 🪶 Single signed Swift binary, no runtime, no third-party deps
+Two batteries. One menu bar item. Zero context switches into a settings page to find out you've already burned through your 5-hour window again.
 
-## Quickstart
-
-Requires macOS 13+ and Swift 5.9+ (Xcode Command Line Tools).
-
-```bash
-cd ~/dev/claude-usage
-./Scripts/verify.sh   # tests + build + smoke launch (must pass clean)
-./Scripts/install.sh  # copies to /Applications and launches
+```
+[C 94%] [O 18%]
 ```
 
-Click the menu bar icon → toggle **Launch at login** → confirm under
-**System Settings → General → Login Items**.
+That's Claude Code on the left (94% of your 5h block) and Codex on the right (18%). Click and a small popover shows the rest — plan, exact tokens, reset times, weekly limits, last activity, and a switch to launch on login.
 
-## How usage is computed
+## Why
 
-Two providers, both reading local JSONL files written by their respective CLIs.
+You're paying for the plans. You'd like to know how close you are to the limit. The official answer is "open `claude.ai/settings/usage` in a browser" or "stare at the Codex CLI scrollback until you spot the rate limit line." Neither of these is a great way to live.
 
-### Claude Code (estimated)
+Moosage is the little battery indicator your menu bar already does for _actual_ batteries — except the thing being depleted is your token budget instead of your laptop's lithium.
 
-Source: `~/.claude/projects/<slug>/<session>.jsonl`. Each line carries a `usage` block.
+## Install
 
-1. Walk every `.jsonl`, collect assistant events with `message.usage`.
-2. Dedupe by `(message.id, requestId)` — the same message can appear in multiple files when sessions resume.
-3. Group events into 5h rolling blocks (matches `ccusage`'s algorithm).
-4. **Fill = currentBlockTokens / planLimit** — the limit is a community estimate per plan, calibrated against observed Claude.ai data.
+You'll need macOS 13+ and the Swift toolchain (`xcode-select --install` is enough — no Xcode app required).
 
-The plan dropdown lives in the popover (Pro / Max 5× / Max 20×). Defaults:
+```bash
+git clone https://github.com/applebya/moosage.git ~/dev/moosage
+cd ~/dev/moosage
+./Scripts/install.sh
+```
 
-| Plan    | Tokens / 5h block |
-| ------- | ----------------- |
-| Pro     | 20,000,000        |
-| Max 5×  | 94,000,000        |
-| Max 20× | 235,000,000       |
+That builds a universal `Moosage.app`, drops it in `/Applications`, and launches it. Click the icon → toggle **Launch at login** → confirm under **System Settings → General → Login Items**. You're done.
 
-These remain approximations — Anthropic doesn't publish an exact cap.
+To uninstall: `./Scripts/uninstall.sh` (it asks no questions, takes no prisoners).
 
-### Codex (authoritative)
+## What you get
 
-Source: `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`. After every turn, Codex writes an `event_msg` with `payload.type == "token_count"` containing the **real** rate-limit state from OpenAI's backend:
+**Menu bar** — two tiny SF-symbol batteries with one-letter tags. Default tint until 75%, yellow at 75–89%, red at 90% and above. Stale providers (no recent calls) are dimmed so you don't panic when Codex shows 0%.
+
+**Popover** — Claude on the left, Codex on the right, side by side because you have a wide monitor.
+
+| Per-provider     | Claude Code                                   | Codex                                 |
+| ---------------- | --------------------------------------------- | ------------------------------------- |
+| Plan name        | ✅ auto-detected from Keychain OAuth          | ✅ from session JSONL                 |
+| Current 5-hour % | ✅ estimated from token sum                   | ✅ authoritative (OpenAI computes it) |
+| Reset time       | ✅                                            | ✅                                    |
+| Weekly %         | ❌ (see [limitations](#what-doesnt-work-yet)) | ✅                                    |
+| Extras balance   | ❌ (see [limitations](#what-doesnt-work-yet)) | ✅ if applicable                      |
+
+**No telemetry. No analytics. No phoning home.** Moosage talks to:
+
+- `~/.claude/projects/**/*.jsonl` (read only)
+- `~/.codex/sessions/**/*.jsonl` (read only)
+- macOS Keychain entry `Claude Code-credentials` (read only — for plan auto-detect)
+- `https://api.anthropic.com/api/oauth/profile` every 5 minutes (just to refresh your plan tier; you can turn this off in code if you really want)
+
+That's it.
+
+## How it works under the hood
+
+Two providers, both reading local files written by their respective CLIs.
+
+**Claude (estimated)** — Walk every JSONL under `~/.claude/projects/`, extract assistant messages with a `usage` block, dedupe by `(message.id, requestId)`, group into 5-hour rolling windows (the `ccusage` algorithm), divide by a per-plan token cap. Plan tier comes from your Keychain OAuth credential so the cap is right without you touching a dropdown.
+
+**Codex (authoritative)** — Codex very kindly writes the _real_ rate-limit block into every session JSONL after every turn:
 
 ```jsonc
 "rate_limits": {
@@ -56,56 +70,86 @@ Source: `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`. After every turn, Codex 
 }
 ```
 
-So for Codex we don't estimate — we just read the latest event from the newest session file.
+So for Codex we don't estimate anything — we just find the newest session file and read its latest `token_count` event. Thanks OpenAI, that's actually useful.
 
-## Manual checklist after install
+The app polls every 5 seconds and also runs a recursive `FSEventStream` watcher so changes are reflected within ~1 second of being written.
 
-- [ ] Two batteries (`C` and `O`) appear in the menu bar
-- [ ] Click opens popover; both providers visible with plan + reset
-- [ ] Numbers match `~/.claude` and Codex respectively
-- [ ] Toggling "Launch at login" reflects in System Settings → General → Login Items
-- [ ] Reboot → app returns to menu bar automatically
+## What doesn't work (yet)
 
-## Development
+**Live Claude session % and extras balance** require Claude.ai's web session cookie because the public OAuth scope (`user:profile`, `user:inference`, etc.) doesn't grant org-level usage reads, and the relevant endpoint sits behind Cloudflare. Plumbing Chrome cookie extraction into a Swift app is doable but fragile — Chrome's app-bound encryption keeps moving the goalposts. **PRs welcome.**
 
-```bash
-swift test          # runs MoosageCoreTests
-swift build         # debug build of both targets
-./Scripts/build-app.sh   # universal release build → build/Moosage.app
-./Scripts/verify.sh      # full pipeline (tests + build + sign + smoke)
-```
+Until then: Claude % is an estimate against a calibrated cap. Has been within ~1–2% of what claude.ai shows for me.
 
-Architecture:
+**Cost in dollars** — there's no metered overage on a Pro/Max plan; you hit the cap and wait. If you turn on extras (it's an account setting), Anthropic bills via Stripe and the balance lives behind that same Cloudflare-gated endpoint.
 
-- `Sources/MoosageCore/` — pure logic, fully testable
-  - **Providers**: `UsageProvider` protocol, `ClaudeProvider`, `CodexProvider`
-  - **Snapshot**: `ProviderSnapshot` (unified UI-facing struct)
-  - **Claude path**: `JSONLParser`, `UsageScanner`, `BlockBuilder`, `SessionBlock`, `PlanLimits`
-  - **Codex path**: `CodexJSONLParser`, `CodexEvent`
-- `Sources/MoosageApp/` — SwiftUI `MenuBarExtra` glue
-  - `BatteryIconView`, `MenuBarLabel`, `PopoverView`, `UsageStore` (poll + FSEvents), `LaunchAtLogin`
-- `Tests/MoosageCoreTests/` — XCTest with anonymized JSONL fixtures
-
-## Roadmap
-
-- **Phase 2 (planned):** Claude network mode — read OAuth from Keychain, hit `claude.ai`'s usage endpoint for true plan/credits/weekly numbers (matching what Codex provides for free locally)
-- **Cost display:** "Plan value used" — tokens × public API rates → "you'd have spent $X at metered API rates"
-
-## Out of scope (current)
-
-- Apple notarization / Developer ID signing (ad-hoc is fine for personal install)
-- Auto-update channel
-- Charts / history view
-- Dock icon, full app window (`LSUIElement=true` blocks both — by design)
-
-## Uninstall
+## Develop
 
 ```bash
-./Scripts/uninstall.sh
+swift test               # 38 tests, runs in ~0.4s
+swift build              # debug
+./Scripts/build-app.sh   # universal release → build/Moosage.app
+./Scripts/verify.sh      # tests + build + sign + smoke launch
 ```
 
-## Privacy
+Layout:
 
-All Phase 1 processing happens locally. Moosage reads `~/.claude/projects/` and `~/.codex/sessions/` and writes nothing outside `UserDefaults` for the chosen Claude plan. No network calls.
+```
+Sources/
+├── MoosageCore/          ← pure logic, fully testable, no SwiftUI
+│   ├── UsageProvider     (protocol)
+│   ├── ClaudeProvider    (JSONL token sum + Keychain OAuth)
+│   ├── CodexProvider     (latest token_count event)
+│   ├── ClaudeOAuthClient (Keychain + api.anthropic.com)
+│   └── …                 (parsers, scanners, snapshot type, plan limits)
+└── MoosageApp/           ← SwiftUI MenuBarExtra glue
+    ├── MoosageApp        (@main)
+    ├── UsageStore        (poll + FSEvents + provider orchestration)
+    ├── MenuBarLabel      (two batteries)
+    ├── PopoverView       (two columns)
+    ├── BatteryIconView   (SF Symbols)
+    └── LaunchAtLogin     (SMAppService)
+Tests/MoosageCoreTests/   ← XCTest with anonymized JSONL fixtures
+```
 
-(Phase 2 will add an opt-in network mode for Claude that pulls from `claude.ai`'s usage endpoint using your existing OAuth token.)
+Adding a new provider (e.g. **Cursor**, **Aider**, **Continue**) is mostly:
+
+1. Implement `UsageProvider` for it (read whatever local files it leaves you)
+2. Add to `UsageStore.providers`
+3. Drop a panel into `PopoverView`
+4. Pick a one-letter menu-bar tag
+
+If your favorite agent doesn't write _anything_ to disk that exposes usage, file an issue on the agent's repo asking for it. Codex got this right; the bar is achievable.
+
+## Contributing
+
+This was hacked together in a single coding session. There are sharp edges. PRs are very welcome — especially:
+
+- Chrome cookie extraction → live Claude % & extras
+- More providers (Cursor / Aider / Continue / etc.)
+- Better menu-bar layout for users with many menu-bar items competing for space
+- A real app icon (currently the dock icon is hidden by `LSUIElement=true`, but the `.app` bundle has nothing for the Finder; an `.icns` would be nice)
+- Localization
+- Anything that makes the cow more central to the experience
+
+How:
+
+1. Fork & clone
+2. Make a branch
+3. `swift test` should still pass; `./Scripts/verify.sh` should be clean
+4. Commit with a useful message and open a PR
+
+No CLA, no contributor license. Just don't push secrets and we're good.
+
+## License
+
+MIT — do whatever. See [LICENSE](LICENSE).
+
+## Credits
+
+- The 5-hour rolling-window dedup algorithm is essentially [`ccusage`](https://github.com/ryoppippi/ccusage)'s, ported to Swift.
+- Codex's well-designed `rate_limits` JSONL block did 80% of that side's work for me.
+- The cow emoji is doing a lot of branding lifting and I appreciate it.
+
+---
+
+🐮 _moo_
