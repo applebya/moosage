@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Test (macOS)
+    runs-on: macos-14
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: |
+          sw_vers
+          swift --version
+
+      - name: Cache Swift build
+        uses: actions/cache@v4
+        with:
+          path: |
+            .build
+            ~/Library/Caches/org.swift.swiftpm
+          key: ${{ runner.os }}-swiftpm-${{ hashFiles('Package.swift', 'Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-swiftpm-
+
+      - name: Build
+        run: swift build
+
+      - name: Test
+        run: swift test --enable-code-coverage
+
+      - name: Build .app
+        run: ./Scripts/build-app.sh
+
+      - name: Verify .app
+        run: |
+          codesign --verify --verbose=2 build/Moosage.app
+          plutil -lint build/Moosage.app/Contents/Info.plist
+          LSUI=$(/usr/libexec/PlistBuddy -c "Print :LSUIElement" build/Moosage.app/Contents/Info.plist)
+          test "$LSUI" = "true"
