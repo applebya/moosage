@@ -1,8 +1,8 @@
 import SwiftUI
-import ClaudeUsageCore
+import MoosageCore
 
 @main
-struct ClaudeUsageApp: App {
+struct MoosageApp: App {
     @StateObject private var store = UsageStore()
 
     var body: some Scene {
@@ -10,7 +10,7 @@ struct ClaudeUsageApp: App {
             PopoverView()
                 .environmentObject(store)
         } label: {
-            MenuBarLabel(snapshot: store.snapshot)
+            MenuBarLabel(claude: store.claudeSnapshot, codex: store.codexSnapshot)
         }
         .menuBarExtraStyle(.window)
     }

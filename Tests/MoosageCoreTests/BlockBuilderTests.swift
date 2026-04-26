@@ -1,5 +1,5 @@
 import XCTest
-@testable import ClaudeUsageCore
+@testable import MoosageCore
 
 final class BlockBuilderTests: XCTestCase {
     private let iso: ISO8601DateFormatter = {

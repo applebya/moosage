@@ -12,11 +12,11 @@ echo "▶ build .app"
 ./Scripts/build-app.sh
 
 echo "▶ codesign verify"
-codesign --verify --verbose=2 build/ClaudeUsage.app
+codesign --verify --verbose=2 build/Moosage.app
 
 echo "▶ Info.plist sanity"
-plutil -lint build/ClaudeUsage.app/Contents/Info.plist
-LSUI=$(/usr/libexec/PlistBuddy -c "Print :LSUIElement" build/ClaudeUsage.app/Contents/Info.plist 2>/dev/null)
+plutil -lint build/Moosage.app/Contents/Info.plist
+LSUI=$(/usr/libexec/PlistBuddy -c "Print :LSUIElement" build/Moosage.app/Contents/Info.plist 2>/dev/null)
 if [ "$LSUI" != "true" ]; then
   echo "❌ LSUIElement missing or false (got: '$LSUI')"
   exit 1
@@ -24,15 +24,15 @@ fi
 echo "  LSUIElement OK (true)"
 
 echo "▶ launch & wait 5s"
-open build/ClaudeUsage.app
+open build/Moosage.app
 sleep 5
-if pgrep -x ClaudeUsage > /dev/null; then
+if pgrep -x Moosage > /dev/null; then
   echo "  process running"
 else
-  echo "❌ ClaudeUsage process not found after launch"
+  echo "❌ Moosage process not found after launch"
   exit 1
 fi
-osascript -e 'tell application "ClaudeUsage" to quit' 2>/dev/null || true
+osascript -e 'tell application "Moosage" to quit' 2>/dev/null || true
 sleep 1
 
 echo "✅ All checks passed."

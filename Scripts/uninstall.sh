@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+osascript -e 'tell application "Moosage" to quit' 2>/dev/null || true
 osascript -e 'tell application "ClaudeUsage" to quit' 2>/dev/null || true
 sleep 1
 
 # Best-effort: unregister login item (requires the .app to still exist)
-if [ -d /Applications/ClaudeUsage.app ]; then
+if [ -d /Applications/Moosage.app ]; then
   /usr/bin/swift - <<'SWIFT' 2>/dev/null || true
 import ServiceManagement
 if SMAppService.mainApp.status == .enabled {
@@ -14,7 +15,8 @@ if SMAppService.mainApp.status == .enabled {
 SWIFT
 fi
 
-rm -rf /Applications/ClaudeUsage.app
+rm -rf /Applications/Moosage.app /Applications/ClaudeUsage.app
+defaults delete com.applebya.moosage 2>/dev/null || true
 defaults delete com.applebya.claudeusage 2>/dev/null || true
 
 echo "✅ Uninstalled."

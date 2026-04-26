@@ -1,19 +1,17 @@
-# ClaudeUsage
+# Moosage 🐮
 
-A native macOS menu bar app that shows your current Claude Code 5-hour window usage as a battery icon.
+A native macOS menu bar app that tracks your **Claude Code** _and_ **Codex CLI** usage in one place. Two batteries, one cohesive UI, no terminal needed.
 
-- 🔋 Battery-style icon fills with current 5-hour block usage
-- ⏰ Shows next reset time (e.g. `1AM`) next to the icon
-- 🖱 Click to expand: tokens used, model breakdown, time-to-reset
-- 🚀 Launch at login (`SMAppService`), no dock icon, no terminal needed
-- 🪶 Single signed Swift binary, no runtime, no network calls — only reads `~/.claude/projects/`
+- 🔋🔋 Two side-by-side battery icons in the menu bar — `[C 94%] [O 18%]` — colored independently (default → yellow ≥75% → red ≥90%)
+- 🖱 Click for a unified popover: per-provider plan, current 5h window, weekly bar (Codex), reset time, last activity
+- 🚀 Launch at login (`SMAppService`), no dock icon
+- 🪶 Single signed Swift binary, no runtime, no third-party deps
 
 ## Quickstart
 
 Requires macOS 13+ and Swift 5.9+ (Xcode Command Line Tools).
 
 ```bash
-git clone <this repo> ~/dev/claude-usage
 cd ~/dev/claude-usage
 ./Scripts/verify.sh   # tests + build + smoke launch (must pass clean)
 ./Scripts/install.sh  # copies to /Applications and launches
@@ -24,57 +22,78 @@ Click the menu bar icon → toggle **Launch at login** → confirm under
 
 ## How usage is computed
 
-Claude Code logs every assistant message under `~/.claude/projects/<slug>/<session>.jsonl`.
-Each line carries a `usage` block. ClaudeUsage:
+Two providers, both reading local JSONL files written by their respective CLIs.
 
-1. Walks every `.jsonl` and collects assistant events with `message.usage`.
-2. Dedupes by `(message.id, requestId)` (same message can appear in multiple files when sessions resume).
-3. Groups events into 5-hour rolling blocks: a new block starts when an event is `>5h` after the current block's start, OR there's a `>5h` gap between consecutive events.
-4. The "current block" is the one whose `[startTime, startTime + 5h)` contains _now_.
-5. Fill = `currentBlockTokens / planLimit`.
+### Claude Code (estimated)
 
-## Plan limits (community estimates)
+Source: `~/.claude/projects/<slug>/<session>.jsonl`. Each line carries a `usage` block.
 
-The "fill" denominator depends on your plan. Defaults are conservative community estimates and **user-overridable** — switch from the popover dropdown:
+1. Walk every `.jsonl`, collect assistant events with `message.usage`.
+2. Dedupe by `(message.id, requestId)` — the same message can appear in multiple files when sessions resume.
+3. Group events into 5h rolling blocks (matches `ccusage`'s algorithm).
+4. **Fill = currentBlockTokens / planLimit** — the limit is a community estimate per plan, calibrated against observed Claude.ai data.
 
-| Plan    | Tokens / 5h block (estimate) |
-| ------- | ---------------------------- |
-| Pro     | 19,000,000                   |
-| Max 5×  | 88,000,000                   |
-| Max 20× | 220,000,000                  |
+The plan dropdown lives in the popover (Pro / Max 5× / Max 20×). Defaults:
 
-Anthropic doesn't publish an exact per-block token cap, so these are approximations. If they drift, edit `Sources/ClaudeUsageCore/PlanLimits.swift`.
+| Plan    | Tokens / 5h block |
+| ------- | ----------------- |
+| Pro     | 20,000,000        |
+| Max 5×  | 94,000,000        |
+| Max 20× | 235,000,000       |
+
+These remain approximations — Anthropic doesn't publish an exact cap.
+
+### Codex (authoritative)
+
+Source: `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`. After every turn, Codex writes an `event_msg` with `payload.type == "token_count"` containing the **real** rate-limit state from OpenAI's backend:
+
+```jsonc
+"rate_limits": {
+  "primary":   { "used_percent": 78.0, "window_minutes": 300,   "resets_at": ... },
+  "secondary": { "used_percent": 15.0, "window_minutes": 10080, "resets_at": ... },
+  "credits":   { "has_credits": true, "unlimited": false, "balance": 42.50 },
+  "plan_type": "plus"
+}
+```
+
+So for Codex we don't estimate — we just read the latest event from the newest session file.
 
 ## Manual checklist after install
 
-- [ ] Icon appears in menu bar
-- [ ] Click opens popover; numbers match `wc -l ~/.claude/projects/**/*.jsonl` ballpark
-- [ ] Reset time displayed correctly
-- [ ] Battery fills proportionally to usage
+- [ ] Two batteries (`C` and `O`) appear in the menu bar
+- [ ] Click opens popover; both providers visible with plan + reset
+- [ ] Numbers match `~/.claude` and Codex respectively
 - [ ] Toggling "Launch at login" reflects in System Settings → General → Login Items
 - [ ] Reboot → app returns to menu bar automatically
 
 ## Development
 
 ```bash
-swift test          # runs all 30 ClaudeUsageCoreTests
+swift test          # runs MoosageCoreTests
 swift build         # debug build of both targets
-./Scripts/build-app.sh   # universal release build → build/ClaudeUsage.app
+./Scripts/build-app.sh   # universal release build → build/Moosage.app
 ./Scripts/verify.sh      # full pipeline (tests + build + sign + smoke)
 ```
 
 Architecture:
 
-- `Sources/ClaudeUsageCore/` — pure logic, fully testable
-  - `JSONLParser`, `UsageScanner`, `BlockBuilder`, `SessionBlock`, `PlanLimits`, `UsageSnapshot`
-- `Sources/ClaudeUsageApp/` — SwiftUI `MenuBarExtra` glue
+- `Sources/MoosageCore/` — pure logic, fully testable
+  - **Providers**: `UsageProvider` protocol, `ClaudeProvider`, `CodexProvider`
+  - **Snapshot**: `ProviderSnapshot` (unified UI-facing struct)
+  - **Claude path**: `JSONLParser`, `UsageScanner`, `BlockBuilder`, `SessionBlock`, `PlanLimits`
+  - **Codex path**: `CodexJSONLParser`, `CodexEvent`
+- `Sources/MoosageApp/` — SwiftUI `MenuBarExtra` glue
   - `BatteryIconView`, `MenuBarLabel`, `PopoverView`, `UsageStore` (poll + FSEvents), `LaunchAtLogin`
-- `Tests/ClaudeUsageCoreTests/` — XCTest with anonymized JSONL fixtures
+- `Tests/MoosageCoreTests/` — XCTest with anonymized JSONL fixtures
 
-## Out of scope (v0.1)
+## Roadmap
+
+- **Phase 2 (planned):** Claude network mode — read OAuth from Keychain, hit `claude.ai`'s usage endpoint for true plan/credits/weekly numbers (matching what Codex provides for free locally)
+- **Cost display:** "Plan value used" — tokens × public API rates → "you'd have spent $X at metered API rates"
+
+## Out of scope (current)
 
 - Apple notarization / Developer ID signing (ad-hoc is fine for personal install)
-- Weekly-limit tracking — separate from the 5h block
 - Auto-update channel
 - Charts / history view
 - Dock icon, full app window (`LSUIElement=true` blocks both — by design)
@@ -87,4 +106,6 @@ Architecture:
 
 ## Privacy
 
-All processing happens locally. ClaudeUsage reads `~/.claude/projects/` and writes nothing outside `UserDefaults` for the chosen plan. No network calls, ever.
+All Phase 1 processing happens locally. Moosage reads `~/.claude/projects/` and `~/.codex/sessions/` and writes nothing outside `UserDefaults` for the chosen Claude plan. No network calls.
+
+(Phase 2 will add an opt-in network mode for Claude that pulls from `claude.ai`'s usage endpoint using your existing OAuth token.)

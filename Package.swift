@@ -2,24 +2,24 @@
 import PackageDescription
 
 let package = Package(
-    name: "ClaudeUsage",
+    name: "Moosage",
     platforms: [
         .macOS(.v13)
     ],
     targets: [
         .target(
-            name: "ClaudeUsageCore",
-            path: "Sources/ClaudeUsageCore"
+            name: "MoosageCore",
+            path: "Sources/MoosageCore"
         ),
         .executableTarget(
-            name: "ClaudeUsageApp",
-            dependencies: ["ClaudeUsageCore"],
-            path: "Sources/ClaudeUsageApp"
+            name: "MoosageApp",
+            dependencies: ["MoosageCore"],
+            path: "Sources/MoosageApp"
         ),
         .testTarget(
-            name: "ClaudeUsageCoreTests",
-            dependencies: ["ClaudeUsageCore"],
-            path: "Tests/ClaudeUsageCoreTests",
+            name: "MoosageCoreTests",
+            dependencies: ["MoosageCore"],
+            path: "Tests/MoosageCoreTests",
             resources: [
                 .copy("Fixtures")
             ]

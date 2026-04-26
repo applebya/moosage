@@ -32,6 +32,12 @@ enum Formatters {
         return f.string(from: date)
     }
 
+    static func weekday(_ date: Date) -> String {
+        let f = DateFormatter()
+        f.dateFormat = "EEE"
+        return f.string(from: date)
+    }
+
     static func relative(_ date: Date, now: Date = Date()) -> String {
         let interval = now.timeIntervalSince(date)
         if interval < 60 { return "just now" }

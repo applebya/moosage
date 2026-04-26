@@ -1,5 +1,5 @@
 import XCTest
-@testable import ClaudeUsageCore
+@testable import MoosageCore
 
 final class UsageScannerTests: XCTestCase {
     func testScansNestedJsonlFilesAndSkipsOthers() throws {
