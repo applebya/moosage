@@ -1,0 +1,6 @@
+
+
+{not valid json at all
+{"type":"permission-mode","permissionMode":"plan","sessionId":"sess-4"}
+{"type":"assistant","timestamp":"2026-04-26T08:00:00.000Z","sessionId":"sess-4","requestId":"req_ok","message":{"id":"msg_ok","model":"claude-opus-4-7","role":"assistant","usage":{"input_tokens":10,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":5}}}
+{"type":"assistant","timestamp":"2026-04-26T08:01:00.000Z","sessionId":"sess-4","requestId":"req_no_usage","message":{"id":"msg_no_usage","model":"claude-opus-4-7","role":"assistant"}}
