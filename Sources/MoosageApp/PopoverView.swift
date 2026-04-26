@@ -6,28 +6,20 @@ struct PopoverView: View {
     @StateObject private var launch = LaunchAtLogin()
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 12) {
             header
 
-            providerPanel(
-                snap: store.claudeSnapshot,
-                accent: .orange,
-                planControl: AnyView(claudePlanPicker)
-            )
-
-            Divider()
-
-            providerPanel(
-                snap: store.codexSnapshot,
-                accent: .green,
-                planControl: nil
-            )
+            if !store.hasInitialLoad {
+                loadingView
+            } else {
+                providerRow
+            }
 
             Divider()
             footer
         }
-        .padding(16)
-        .frame(width: 340)
+        .padding(14)
+        .frame(width: 540)
     }
 
     private var header: some View {
@@ -40,6 +32,26 @@ struct PopoverView: View {
         }
     }
 
+    private var loadingView: some View {
+        VStack(spacing: 12) {
+            ProgressView()
+                .controlSize(.small)
+            Text("Reading your usage…")
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 32)
+    }
+
+    private var providerRow: some View {
+        HStack(alignment: .top, spacing: 12) {
+            providerColumn(snap: store.claudeSnapshot, accent: .orange, planControl: AnyView(claudePlanPicker))
+            Divider()
+            providerColumn(snap: store.codexSnapshot, accent: .green, planControl: nil)
+        }
+    }
+
     private var claudePlanPicker: some View {
         Picker("", selection: $store.claudePlan) {
             ForEach(Plan.allCases, id: \.self) { p in
@@ -49,50 +61,55 @@ struct PopoverView: View {
         .pickerStyle(.menu)
         .labelsHidden()
         .controlSize(.small)
-        .frame(maxWidth: 110)
+        .frame(maxWidth: 90)
     }
 
     @ViewBuilder
-    private func providerPanel(
+    private func providerColumn(
         snap: ProviderSnapshot,
         accent: Color,
         planControl: AnyView?
     ) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .firstTextBaseline) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Circle().fill(accent).frame(width: 6, height: 6)
                 Text(snap.providerName)
                     .font(.system(.subheadline, weight: .semibold))
-                if let plan = snap.planName {
-                    Text(plan)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-                Spacer()
+                    .lineLimit(1)
+                Spacer(minLength: 4)
                 if let planControl { planControl }
+            }
+            if let plan = snap.planName {
+                Text(plan)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
             }
 
             if snap.primaryResetTime == nil {
                 Text(snap.isStale ? "No recent activity" : "Waiting for first event…")
                     .font(.caption)
                     .foregroundColor(.secondary)
+                    .padding(.top, 2)
             } else {
                 primarySection(snap)
                 if snap.weeklyFillRatio != nil {
                     weeklySection(snap)
+                        .padding(.top, 4)
                 }
                 if let last = snap.lastActivity {
                     Text("Last activity \(Formatters.relative(last))")
-                        .font(.caption)
+                        .font(.caption2)
                         .foregroundColor(.secondary)
+                        .padding(.top, 2)
                 }
             }
         }
+        .frame(minWidth: 230, alignment: .topLeading)
     }
 
     private func primarySection(_ snap: ProviderSnapshot) -> some View {
         let pct = Int((snap.primaryFillRatio * 100).rounded())
-        return VStack(alignment: .leading, spacing: 5) {
+        return VStack(alignment: .leading, spacing: 4) {
             ProgressView(value: snap.primaryFillRatio)
                 .progressViewStyle(.linear)
                 .tint(barTint(snap.primaryFillRatio))
@@ -104,19 +121,19 @@ struct PopoverView: View {
                 if let used = snap.primaryUsedTokens {
                     if let limit = snap.primaryLimitTokens {
                         Text("\(Formatters.compactTokens(used)) / \(Formatters.compactTokens(limit))")
-                            .font(.caption)
+                            .font(.caption2)
                             .foregroundColor(.secondary)
                     } else {
                         Text("\(Formatters.compactTokens(used)) tokens")
-                            .font(.caption)
+                            .font(.caption2)
                             .foregroundColor(.secondary)
                     }
                 }
             }
             if let reset = snap.primaryResetTime {
                 let remaining = reset.timeIntervalSince(snap.generatedAt)
-                Text("Resets in \(Formatters.remaining(remaining))  (at \(Formatters.clockTime(reset)))")
-                    .font(.caption)
+                Text("Resets in \(Formatters.remaining(remaining)) (\(Formatters.clockTime(reset)))")
+                    .font(.caption2)
                     .foregroundColor(.secondary)
             }
         }
@@ -125,14 +142,12 @@ struct PopoverView: View {
     private func weeklySection(_ snap: ProviderSnapshot) -> some View {
         let weekly = snap.weeklyFillRatio ?? 0
         let pct = Int((weekly * 100).rounded())
-        return VStack(alignment: .leading, spacing: 4) {
+        return VStack(alignment: .leading, spacing: 3) {
             HStack {
-                Text("Weekly")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                Text("Weekly").font(.caption2).foregroundColor(.secondary)
                 Spacer()
                 Text("\(pct)%")
-                    .font(.caption.monospacedDigit())
+                    .font(.caption2.monospacedDigit())
                     .foregroundColor(.secondary)
             }
             ProgressView(value: weekly)

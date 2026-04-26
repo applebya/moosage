@@ -1,53 +1,35 @@
 import SwiftUI
 
+/// Battery glyph backed by SF Symbols — renders correctly in MenuBarExtra
+/// labels (where GeometryReader-based custom shapes collapse to zero).
 struct BatteryIconView: View {
     let fill: Double // 0…1
+    var pointSize: CGFloat = 14
 
     var body: some View {
-        GeometryReader { geo in
-            let w = geo.size.width
-            let h = geo.size.height
-            // Apple-ish proportions: body ≈ 88% of width, nub a small bump on the right.
-            let bodyWidth = w * 0.88
-            let nubWidth = w * 0.06
-            let nubHeight = h * 0.42
-            let stroke: CGFloat = max(1, h * 0.10)
-            let bodyCorner = h * 0.28
-            let inset = stroke + 1
+        Image(systemName: symbol)
+            .font(.system(size: pointSize, weight: .regular))
+            .foregroundColor(tint)
+            .symbolRenderingMode(.hierarchical)
+            .accessibilityLabel("Battery \(Int((clamped * 100).rounded()))%")
+    }
 
-            ZStack(alignment: .leading) {
-                // Body outline
-                RoundedRectangle(cornerRadius: bodyCorner, style: .continuous)
-                    .stroke(Color.primary, lineWidth: stroke)
-                    .frame(width: bodyWidth, height: h)
+    private var clamped: Double { min(max(fill, 0), 1) }
 
-                // Inner fill — width scales with usage
-                RoundedRectangle(cornerRadius: max(0, bodyCorner - stroke), style: .continuous)
-                    .fill(fillColor)
-                    .frame(
-                        width: max(0, (bodyWidth - inset * 2) * CGFloat(clampedFill)),
-                        height: h - inset * 2
-                    )
-                    .padding(.leading, inset)
-
-                // Nub on the right of the body
-                RoundedRectangle(cornerRadius: nubWidth * 0.5, style: .continuous)
-                    .fill(Color.primary)
-                    .frame(width: nubWidth, height: nubHeight)
-                    .offset(x: bodyWidth - 0.5, y: (h - nubHeight) / 2)
-            }
-            .frame(width: w, height: h, alignment: .leading)
+    /// Five-step SF Symbol — present in macOS 13+ (SF Symbols 4).
+    private var symbol: String {
+        switch clamped {
+        case 0..<0.13: return "battery.0"
+        case ..<0.38:  return "battery.25"
+        case ..<0.63:  return "battery.50"
+        case ..<0.88:  return "battery.75"
+        default:        return "battery.100"
         }
     }
 
-    private var clampedFill: Double { min(max(fill, 0), 1) }
-
-    /// Used-fill color: default tint until 75%, yellow at 75–89%, red at ≥90%.
-    private var fillColor: Color {
-        switch clampedFill {
-        case 0.90...:        return .red
-        case 0.75..<0.90:    return .yellow
-        default:             return .primary
-        }
+    private var tint: Color {
+        if clamped >= 0.90 { return .red }
+        if clamped >= 0.75 { return .yellow }
+        return .primary
     }
 }

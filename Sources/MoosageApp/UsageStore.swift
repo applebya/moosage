@@ -7,6 +7,7 @@ import MoosageCore
 @MainActor
 final class UsageStore: ObservableObject {
     @Published private(set) var snapshots: [ProviderSnapshot] = []
+    @Published private(set) var hasInitialLoad: Bool = false
     @Published var claudePlan: Plan {
         didSet {
             UserDefaults.standard.set(claudePlan.rawValue, forKey: Self.planKey)
@@ -20,8 +21,10 @@ final class UsageStore: ObservableObject {
     let claudeProvider: ClaudeProvider
     let codexProvider: CodexProvider
     private var providers: [UsageProvider] { [claudeProvider, codexProvider] }
+    private let oauthClient = ClaudeOAuthClient()
 
     private var pollTimer: Timer?
+    private var profileTimer: Timer?
     private var eventStreams: [FSEventStreamRef] = []
     private var debounceTask: Task<Void, Never>?
 
@@ -29,16 +32,22 @@ final class UsageStore: ObservableObject {
         let storedPlanRaw = UserDefaults.standard.string(forKey: Self.planKey) ?? Plan.max5x.rawValue
         let plan = Plan(rawValue: storedPlanRaw) ?? .max5x
         self.claudePlan = plan
-        self.claudeProvider = ClaudeProvider(plan: plan)
+
+        // Try Keychain-only sync first so we have a plan immediately on launch.
+        let cachedAccount = oauthClient.cachedAccount()
+        self.claudeProvider = ClaudeProvider(plan: plan, account: cachedAccount)
         self.codexProvider = CodexProvider()
 
         Task { await self.refresh() }
+        Task { await self.refreshAccount() }
         startPolling()
+        startProfileRefresh()
         startFileWatch()
     }
 
     deinit {
         pollTimer?.invalidate()
+        profileTimer?.invalidate()
         for stream in eventStreams {
             FSEventStreamStop(stream)
             FSEventStreamInvalidate(stream)
@@ -66,6 +75,7 @@ final class UsageStore: ObservableObject {
         }.value
         await MainActor.run {
             self.snapshots = snaps
+            self.hasInitialLoad = true
         }
     }
 
@@ -85,6 +95,24 @@ final class UsageStore: ObservableObject {
         pollTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
             guard let self else { return }
             Task { await self.refresh() }
+        }
+    }
+
+    private func startProfileRefresh() {
+        // Re-fetch OAuth profile every 5 minutes — plan info changes rarely.
+        profileTimer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            Task { await self.refreshAccount() }
+        }
+    }
+
+    private func refreshAccount() async {
+        if let account = await oauthClient.fetchProfile() {
+            await MainActor.run {
+                self.claudeProvider.account = account
+                self.objectWillChange.send()
+            }
+            await refresh()
         }
     }
 

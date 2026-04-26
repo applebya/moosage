@@ -10,7 +10,11 @@ struct MoosageApp: App {
             PopoverView()
                 .environmentObject(store)
         } label: {
-            MenuBarLabel(claude: store.claudeSnapshot, codex: store.codexSnapshot)
+            MenuBarLabel(
+                claude: store.claudeSnapshot,
+                codex: store.codexSnapshot,
+                isLoading: !store.hasInitialLoad
+            )
         }
         .menuBarExtraStyle(.window)
     }
