@@ -12,14 +12,17 @@ public final class ClaudeProvider: UsageProvider {
     public let letter = "C"
     public let watchedPaths: [URL]
 
-    /// Mutable — set from the host on user input. Reading from a background
-    /// task is safe because the field is overwritten atomically and read-after-write
-    /// drift only changes which limit denominator we use for the next snapshot.
-    public var plan: Plan
+    /// Mutable — set from the host on user input. Marked `nonisolated(unsafe)`
+    /// because the access pattern is safe: writes only happen on the main
+    /// actor (UsageStore.didSet), reads on a background task may see a
+    /// slightly stale value but Plan is a small enum and worst case we
+    /// use one slightly outdated denominator for one snapshot.
+    nonisolated(unsafe) public var plan: Plan
 
     /// Snapshot of the OAuth-derived account, if available. Refreshed
-    /// out-of-band by the host every few minutes.
-    public var account: ClaudeAccount?
+    /// out-of-band by the host every few minutes. Same safety reasoning
+    /// as `plan`.
+    nonisolated(unsafe) public var account: ClaudeAccount?
 
     private let root: URL
 
